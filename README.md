@@ -1,302 +1,306 @@
-# Token 验证系统
+# Token Authentication System
 
-一个基于 Telegram Bot 的 Token 验证系统，支持用户注册、Token 生成、卡密管理、API 验证、在线支付和IP换绑功能。
+A Telegram Bot based token authentication system with user registration, token generation, key management, API verification, online payment and IP binding features.
 
-## 🚀 功能特性
+[中文文档](./docs/README_zh.md)
 
-### 核心功能
-- **Token 生成**: 用户绑定公网IP生成专属加密Token
-- **API 验证**: HTTP API接口验证Token有效性和使用次数
-- **卡密系统**: 管理员生成卡密，用户使用卡密增加使用次数
-- **用户管理**: 完整的用户信息管理和状态跟踪
-- **在线支付**: 集成易支付系统，支持微信和支付宝充值
-- **IP换绑**: 支持用户付费更换绑定IP地址
+## 🚀 Features
 
-### 安全特性
-- **AES-GCM 加密**: 使用256位AES-GCM加密算法保护Token
-- **IP 绑定**: Token与用户公网IP绑定，防止滥用
-- **确定性密钥**: 基于用户ID和时间戳生成确定性加密密钥
-- **使用次数限制**: 每个Token有使用次数限制
-- **支付验签**: 支付回调签名验证，防止伪造支付
+### Core Features
+- **Token Generation**: Users bind public IP to generate encrypted tokens
+- **API Verification**: HTTP API for token validation and usage counting
+- **Key Management**: Admins generate keys, users use keys to increase usage count
+- **User Management**: Complete user information management and status tracking
+- **Online Payment**: Integrated with EPay system, supporting WeChat Pay and Alipay
+- **IP Rebinding**: Support for users to change bound IP address with payment
 
-### 用户体验
-- **按钮式界面**: 直观的Telegram内联键盘操作
-- **消息链接**: 所有操作在同一消息上进行，界面整洁
-- **自动超时**: 5分钟无操作自动删除消息
-- **实时反馈**: 即时的操作结果反馈
-- **支付状态查询**: 实时查询订单支付状态
+### Security Features
+- **AES-GCM Encryption**: Using 256-bit AES-GCM encryption algorithm to protect tokens
+- **IP Binding**: Tokens bound to user's public IP to prevent abuse
+- **Deterministic Keys**: Deterministic encryption keys based on user ID and timestamp
+- **Usage Limits**: Each token has usage limits
+- **Payment Signature Verification**: Payment callback signature verification to prevent fraud
 
-## 📋 系统架构
+### User Experience
+- **Button Interface**: Intuitive Telegram inline keyboard operations
+- **Message Linking**: All operations on the same message for clean interface
+- **Auto Timeout**: 5-minute inactivity auto-delete messages
+- **Real-time Feedback**: Immediate operation result feedback
+- **Payment Status Query**: Real-time order payment status checking
 
-### 数据结构
+## 📋 System Architecture
 
-#### 配置结构 (Config)
+### Data Structures
+
+#### Config Structure
 ```go
 type Config struct {
     Server struct {
-        Port int    // HTTP服务器端口
-        Host string // HTTP服务器主机
+        Port int    // HTTP server port
+        Host string // HTTP server host
     }
     Bot struct {
-        AdminIDs []int64 // 管理员用户ID列表
+        AdminIDs []int64 // Admin user ID list
         Token    string  // Telegram Bot Token
     }
     Database struct {
-        Host     string // 数据库主机
-        Port     int    // 数据库端口
-        User     string // 数据库用户名
-        Password string // 数据库密码
-        DBName   string // 数据库名称
+        Host     string // Database host
+        Port     int    // Database port
+        User     string // Database username
+        Password string // Database password
+        DBName   string // Database name
     }
     Limits struct {
-        DefaultLimit int // 默认使用次数
-        KeyAddLimit  int // 卡密默认增加次数
+        DefaultLimit int // Default usage count
+        KeyAddLimit  int // Default key add count
     }
     Payment struct {
-        BaseURL     string  // 易支付API基础地址
-        MchID       string  // 商户ID
-        Secret      string  // 通讯密钥
-        PricePerUse float64 // 每次使用价格
-        NotifyURL   string  // 异步回调地址
-        ReturnURL   string  // 同步回调地址
+        BaseURL     string  // EPay API base URL
+        MchID       string  // Merchant ID
+        Secret      string  // Communication secret
+        PricePerUse float64 // Price per use
+        NotifyURL   string  // Async callback URL
+        ReturnURL   string  // Sync callback URL
     }
 }
 ```
 
-#### 用户记录 (UserRecord)
+#### User Record
 ```go
 type UserRecord struct {
-    UserID    string // 用户ID
-    IP        string // 绑定的公网IP
-    Token     string // 加密Token
-    Limit     int    // 剩余使用次数
-    Timestamp int64  // 创建时间戳
-    CreatedAt string // 创建时间字符串
+    UserID    string // User ID
+    IP        string // Bound public IP
+    Token     string // Encrypted token
+    Limit     int    // Remaining usage count
+    Timestamp int64  // Creation timestamp
+    CreatedAt string // Creation time string
 }
 ```
 
-#### 卡密记录 (KeyRecord)
+#### Key Record
 ```go
 type KeyRecord struct {
-    Key       string // 卡密字符串
-    AddLimit  int    // 可增加的次数
-    Used      bool   // 是否已使用
-    UsedBy    string // 使用者ID
-    CreatedBy string // 创建者ID
-    CreatedAt string // 创建时间
-    UsedAt    string // 使用时间
+    Key       string // Key string
+    AddLimit  int    // Count to add
+    Used      bool   // Whether used
+    UsedBy    string // User ID who used
+    CreatedBy string // Admin ID who created
+    CreatedAt string // Creation time
+    UsedAt    string // Usage time
 }
 ```
 
-#### 订单记录 (Order)
+#### Order Record
 ```go
 type Order struct {
-    PayID       string     // 商户订单号
-    UserID      string     // 用户ID
-    Count       int        // 购买次数
-    GoodsName   string     // 商品名称
-    Price       float64    // 订单金额
-    Status      string     // 订单状态
-    CreateTime  time.Time  // 创建时间
-    PayTime     *time.Time // 支付时间
-    PayType     int        // 支付方式
-    ReallyPrice float64    // 实际支付金额
-    OrderID     string     // 易支付订单号
-    ChatID      int64      // 聊天ID
-    MessageID   int        // 消息ID
+    PayID       string     // Merchant order number
+    UserID      string     // User ID
+    Count       int        // Purchase count
+    GoodsName   string     // Product name
+    Price       float64    // Order amount
+    Status      string     // Order status
+    CreateTime  time.Time  // Creation time
+    PayTime     *time.Time // Payment time
+    PayType     int        // Payment method
+    ReallyPrice float64    // Actual payment amount
+    OrderID     string     // EPay order number
+    ChatID      int64      // Chat ID
+    MessageID   int        // Message ID
 }
 ```
 
-### 核心模块
+### Core Modules
 
-#### 1. 数据库模块
-- **MySQL连接**: 使用MySQL存储用户、卡密和订单数据
-- **事务处理**: 卡密使用等关键操作使用事务确保数据一致性
-- **连接池管理**: 设置连接池参数优化性能
+#### 1. Database Module
+- **MySQL Connection**: Using MySQL to store user, key and order data
+- **Transaction Processing**: Key usage and other critical operations use transactions to ensure data consistency
+- **Connection Pool Management**: Set connection pool parameters to optimize performance
 
-#### 2. 加密模块
-- **AES密钥生成**: `generateAESKey()` - 生成256位随机密钥
-- **确定性密钥**: `generateDeterministicKey()` - 基于用户ID和时间戳生成
-- **Token加密**: `encryptPayload()` - AES-GCM加密用户数据
-- **Token解密**: `decryptToken()` - 解密并验证Token
+#### 2. Encryption Module
+- **AES Key Generation**: `generateAESKey()` - Generate 256-bit random key
+- **Deterministic Key**: `generateDeterministicKey()` - Generate based on user ID and timestamp
+- **Token Encryption**: `encryptPayload()` - AES-GCM encrypt user data
+- **Token Decryption**: `decryptToken()` - Decrypt and verify token
 
-#### 3. 验证模块
-- **IP验证**: 检查公网IP有效性，拒绝内网地址
-- **Token验证**: 完整的Token解密和验证流程
-- **使用次数管理**: 自动扣减和更新使用次数
+#### 3. Verification Module
+- **IP Verification**: Check public IP validity, reject private addresses
+- **Token Verification**: Complete token decryption and verification process
+- **Usage Count Management**: Auto deduct and update usage count
 
-#### 4. Bot界面模块
-- **状态管理**: 用户操作状态跟踪
-- **消息超时**: 自动清理超时消息
-- **键盘管理**: 动态生成内联键盘
+#### 4. Bot Interface Module
+- **State Management**: User operation state tracking
+- **Message Timeout**: Auto cleanup of timeout messages
+- **Keyboard Management**: Dynamic inline keyboard generation
 
-#### 5. 支付模块
-- **易支付集成**: 支持微信和支付宝支付
-- **订单管理**: 创建、查询和更新订单
-- **支付回调**: 处理支付成功通知
-- **签名验证**: 验证支付回调的签名
+#### 5. Payment Module
+- **EPay Integration**: Support WeChat Pay and Alipay
+- **Order Management**: Create, query and update orders
+- **Payment Callback**: Handle payment success notifications
+- **Signature Verification**: Verify payment callback signatures
 
-## 🎮 用户操作流程
+## 🎮 User Operation Flow
 
-### 普通用户功能
+### Regular User Features
 
-#### 1. 获取Token
+#### 1. Get Token
 ```
-用户点击"🐳 获取Token" → 
-输入公网IP地址 → 
-系统验证IP有效性 → 
-生成加密Token → 
-返回Token和初始使用次数
-```
-
-#### 2. 查看账户信息
-```
-用户点击"🛳️ 账户信息" → 
-显示用户ID、绑定IP、剩余次数、Token等信息
+User clicks "🐳 Get Token" → 
+Enter public IP address → 
+System validates IP → 
+Generate encrypted token → 
+Return token and initial usage count
 ```
 
-#### 3. 使用卡密
+#### 2. View Account Info
 ```
-用户点击"💻 使用卡密" → 
-输入32位卡密 → 
-系统验证卡密有效性 → 
-增加使用次数 → 
-更新账户信息
+User clicks "🛳️ Account Info" → 
+Display user ID, bound IP, remaining count, token, etc.
 ```
 
-#### 4. 充值次数
+#### 3. Use Key
 ```
-用户点击"💰 充值次数" → 
-输入要充值的次数 → 
-确认订单信息 → 
-跳转至支付页面 → 
-完成支付 → 
-自动增加使用次数
-```
-
-#### 5. 换绑IP
-```
-用户点击"🔥 换绑IP" → 
-输入新的公网IP → 
-系统验证IP有效性 → 
-创建换绑订单 → 
-完成支付 → 
-自动更新IP并生成新Token
+User clicks "💻 Use Key" → 
+Enter 32-digit key → 
+System validates key → 
+Increase usage count → 
+Update account info
 ```
 
-### 管理员功能
-
-#### 1. 生成卡密
+#### 4. Recharge Count
 ```
-管理员点击"🛠️ 管理员功能" → 
-点击"🎉 生成卡密" → 
-输入可增加的次数 → 
-确认生成 → 
-返回32位卡密
+User clicks "💰 Recharge Count" → 
+Enter count to recharge → 
+Confirm order info → 
+Redirect to payment page → 
+Complete payment → 
+Auto increase usage count
 ```
 
-## 🔌 API 接口
+#### 5. Rebind IP
+```
+User clicks "🔥 Rebind IP" → 
+Enter new public IP → 
+System validates IP → 
+Create rebind order → 
+Complete payment → 
+Auto update IP and generate new token
+```
+
+### Admin Features
+
+#### 1. Generate Key
+```
+Admin clicks "🛠️ Admin Features" → 
+Click "🎉 Generate Key" → 
+Enter count to add → 
+Confirm generation → 
+Return 32-digit key
+```
+
+## 🔌 API Interfaces
 
 ### POST /verify
-验证Token有效性和使用次数
+Verify token validity and usage count
 
-#### 请求格式
+#### Request Format
 ```json
 {
-    "token": "加密的Token字符串"
+    "token": "Encrypted token string"
 }
 ```
 
-#### 响应格式
+#### Response Format
 ```json
 {
     "success": true/false,
-    "message": "响应消息",
-    "user_id": "用户ID",
-    "limit": 剩余次数
+    "message": "Response message",
+    "user_id": "User ID",
+    "limit": remaining count
 }
 ```
 
-#### 响应状态码
-- `200`: 验证成功
-- `400`: 请求格式错误或IP无效
-- `401`: Token无效或IP不匹配
-- `403`: 使用次数不足
-- `500`: 系统错误
+#### Response Status Codes
+- `200`: Verification successful
+- `400`: Request format error or invalid IP
+- `401`: Invalid token or IP mismatch
+- `403`: Insufficient usage count
+- `500`: System error
 
 ### GET/POST /notify
-易支付异步回调接口
+EPay async callback interface
 
 ### GET /return
-易支付同步回调接口
+EPay sync callback interface
 
-## 🛠️ 技术实现
+## 🛠️ Technical Implementation
 
-### 加密算法
-- **算法**: AES-256-GCM
-- **密钥长度**: 256位 (32字节)
-- **随机数**: 96位 (12字节) Nonce
-- **认证**: GCM模式提供完整性验证
+### Encryption Algorithm
+- **Algorithm**: AES-256-GCM
+- **Key Length**: 256-bit (32 bytes)
+- **Nonce**: 96-bit (12 bytes)
+- **Authentication**: GCM mode provides integrity verification
 
-### Token结构
+### Token Structure
 ```
-[时间戳(8字节)] + [用户ID长度(1字节)] + [用户ID] + [Nonce(12字节)] + [密文]
+[Timestamp(8 bytes)] + [UserID length(1 byte)] + [UserID] + [Nonce(12 bytes)] + [Ciphertext]
 ```
 
-### 卡密生成
-- **算法**: MD5哈希
-- **输入**: 时间戳 + 管理员ID
-- **输出**: 32位十六进制字符串
+### Key Generation
+- **Algorithm**: MD5 hash
+- **Input**: Timestamp + Admin ID
+- **Output**: 32-digit hex string
 
-### 数据存储
-- **数据库**: MySQL
-- **表结构**:
-  - `users`: 用户信息表
-  - `card_keys`: 卡密信息表
-  - `orders`: 订单信息表
+### Data Storage
+- **Database**: MySQL
+- **Tables**:
+  - `users`: User information table
+  - `card_keys`: Key information table
+  - `orders`: Order information table
 
-## 🔒 安全机制
+## 🔒 Security Mechanisms
 
-### 1. IP绑定验证
-- 拒绝内网地址 (10.x.x.x, 172.16-31.x.x, 192.168.x.x, 127.x.x.x)
-- 验证IP格式有效性
-- Token与IP强绑定
+### 1. IP Binding Verification
+- Reject private addresses (10.x.x.x, 172.16-31.x.x, 192.168.x.x, 127.x.x.x)
+- Validate IP format
+- Strong token-IP binding
 
-### 2. 使用次数控制
-- 每次验证自动扣减次数
-- 次数不足时拒绝验证
-- 支持通过卡密或在线支付增加次数
+### 2. Usage Count Control
+- Auto deduct count on each verification
+- Reject verification when count insufficient
+- Support increasing count via keys or online payment
 
-### 3. 消息安全
-- 自动删除用户输入消息
-- 5分钟超时自动清理
-- 防止信息泄露
+### 3. Message Security
+- Auto delete user input messages
+- 5-minute timeout auto cleanup
+- Prevent information leakage
 
-### 4. 管理员权限
-- 基于用户ID的权限控制
-- 只有配置的管理员可生成卡密
-- 操作日志记录
+### 4. Admin Permissions
+- User ID based permission control
+- Only configured admins can generate keys
+- Operation log recording
 
-### 5. 支付安全
-- 签名验证支付回调
-- 订单状态实时查询
-- 事务处理确保数据一致性
+### 5. Payment Security
+- Signature verification for payment callbacks
+- Real-time order status query
+- Transaction processing ensures data consistency
 
-## 📁 文件结构
+## 📁 File Structure
 
 ```
 token-auth-system/
-├── main.go          # 主程序文件
-├── config.toml      # 配置文件
-├── README.md        # 项目文档
+├── main.go          # Main program file
+├── config.toml      # Configuration file
+├── README.md        # Project documentation (English)
+├── docs/
+│   └── README_zh.md # Chinese documentation
 └── sql/
-    ├── schema.sql   # 数据库表结构
-    └── init.sql     # 初始化数据
+    ├── schema.sql   # Database table structure
+    └── init.sql     # Initialization data
 ```
 
-## 🗄️ 数据库表结构
+## 🗄️ Database Table Structure
 
-### users 表
+### users table
 ```sql
 CREATE TABLE `users` (
   `id` int NOT NULL AUTO_INCREMENT,
@@ -313,7 +317,7 @@ CREATE TABLE `users` (
 );
 ```
 
-### card_keys 表
+### card_keys table
 ```sql
 CREATE TABLE `card_keys` (
   `id` int NOT NULL AUTO_INCREMENT,
@@ -329,7 +333,7 @@ CREATE TABLE `card_keys` (
 );
 ```
 
-### orders 表
+### orders table
 ```sql
 CREATE TABLE `orders` (
   `id` int NOT NULL AUTO_INCREMENT,
@@ -355,9 +359,9 @@ CREATE TABLE `orders` (
 );
 ```
 
-## ⚙️ 配置说明
+## ⚙️ Configuration
 
-### config.toml 示例
+### config.toml Example
 ```toml
 [server]
 port = 8080
@@ -387,77 +391,77 @@ notify_url = "https://your-domain.com/notify"
 return_url = "https://your-domain.com/return"
 ```
 
-## 🚀 部署运行
+## 🚀 Deployment
 
-### 1. 环境要求
+### 1. Requirements
 - Go 1.16+
 - MySQL 5.7+
 - Telegram Bot Token
-- 公网服务器
-- 易支付商户账号
+- Public server
+- EPay merchant account
 
-### 2. 数据库准备
+### 2. Database Preparation
 ```bash
 mysql -u root -p < sql/schema.sql
 ```
 
-### 3. 安装依赖
+### 3. Install Dependencies
 ```bash
 go mod tidy
 ```
 
-### 4. 配置文件
-编辑 `config.toml` 设置Bot Token、数据库连接和支付参数
+### 4. Configuration
+Edit `config.toml` to set Bot Token, database connection and payment parameters
 
-### 5. 运行程序
+### 5. Run Program
 ```bash
 go run main.go
 ```
 
-### 6. 验证部署
-- 访问 `http://your-server:8080/health` 检查服务状态
-- 在Telegram中向Bot发送 `/help` 测试功能
+### 6. Verify Deployment
+- Visit `http://your-server:8080/health` to check service status
+- Send `/help` to the Telegram Bot to test functionality
 
-## 📊 监控和日志
+## 📊 Monitoring and Logs
 
-### 日志级别
-- `[INFO]`: 正常操作信息
-- `[WARN]`: 警告信息
-- `[ERROR]`: 错误信息
-- `[FATAL]`: 致命错误
-- `[DEBUG]`: 调试信息
+### Log Levels
+- `[INFO]`: Normal operation information
+- `[WARN]`: Warning information
+- `[ERROR]`: Error information
+- `[FATAL]`: Fatal error
+- `[DEBUG]`: Debug information
 
-### 关键监控指标
-- HTTP请求响应时间
-- Token验证成功率
-- 用户注册数量
-- 卡密使用情况
-- 订单支付转化率
-- 系统错误率
+### Key Metrics
+- HTTP request response time
+- Token verification success rate
+- User registration count
+- Key usage status
+- Order payment conversion rate
+- System error rate
 
-## 🔄 更新日志
+## 🔄 Changelog
 
 ### v2.0.0
-- ✅ 数据库从JSON文件迁移到MySQL
-- ✅ 集成易支付系统支持在线充值
-- ✅ 添加IP换绑功能
-- ✅ 优化消息管理和超时机制
-- ✅ 增强安全性和错误处理
+- ✅ Migrated database from JSON files to MySQL
+- ✅ Integrated EPay system for online recharging
+- ✅ Added IP rebinding feature
+- ✅ Optimized message management and timeout mechanism
+- ✅ Enhanced security and error handling
 
 ### v1.0.0
-- ✅ 基础Token生成和验证功能
-- ✅ 卡密系统实现
-- ✅ Telegram Bot界面
-- ✅ 消息链接和超时管理
-- ✅ 完整的安全机制
-- ✅ API接口实现
+- ✅ Basic token generation and verification functionality
+- ✅ Key system implementation
+- ✅ Telegram Bot interface
+- ✅ Message linking and timeout management
+- ✅ Complete security mechanisms
+- ✅ API interface implementation
 
-## 📞 技术支持
+## 📞 Technical Support
 
-如有问题或建议，请通过以下方式联系：
-- 创建 GitHub Issue
-- 联系系统管理员
+For questions or suggestions, please contact:
+- Create GitHub Issue
+- Contact system administrator
 
 ---
 
-**注意**: 请妥善保管Bot Token和管理员权限，确保系统安全运行。
+**Note**: Please keep Bot Token and admin permissions secure to ensure system security.
