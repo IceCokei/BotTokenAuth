@@ -1,6 +1,6 @@
 # Token 验证系统
 
-一个基于 Telegram Bot 的 Token 验证系统，支持用户注册、Token 生成、卡密管理和 API 验证功能。
+一个基于 Telegram Bot 的 Token 验证系统，支持用户注册、Token 生成、卡密管理、API 验证、在线支付和IP换绑功能。
 
 ## 🚀 功能特性
 
@@ -9,18 +9,22 @@
 - **API 验证**: HTTP API接口验证Token有效性和使用次数
 - **卡密系统**: 管理员生成卡密，用户使用卡密增加使用次数
 - **用户管理**: 完整的用户信息管理和状态跟踪
+- **在线支付**: 集成易支付系统，支持微信和支付宝充值
+- **IP换绑**: 支持用户付费更换绑定IP地址
 
 ### 安全特性
 - **AES-GCM 加密**: 使用256位AES-GCM加密算法保护Token
 - **IP 绑定**: Token与用户公网IP绑定，防止滥用
 - **确定性密钥**: 基于用户ID和时间戳生成确定性加密密钥
 - **使用次数限制**: 每个Token有使用次数限制
+- **支付验签**: 支付回调签名验证，防止伪造支付
 
 ### 用户体验
 - **按钮式界面**: 直观的Telegram内联键盘操作
 - **消息链接**: 所有操作在同一消息上进行，界面整洁
 - **自动超时**: 5分钟无操作自动删除消息
 - **实时反馈**: 即时的操作结果反馈
+- **支付状态查询**: 实时查询订单支付状态
 
 ## 📋 系统架构
 
@@ -38,12 +42,23 @@ type Config struct {
         Token    string  // Telegram Bot Token
     }
     Database struct {
-        File     string // 用户数据库文件路径
-        KeysFile string // 卡密数据库文件路径
+        Host     string // 数据库主机
+        Port     int    // 数据库端口
+        User     string // 数据库用户名
+        Password string // 数据库密码
+        DBName   string // 数据库名称
     }
     Limits struct {
         DefaultLimit int // 默认使用次数
         KeyAddLimit  int // 卡密默认增加次数
+    }
+    Payment struct {
+        BaseURL     string  // 易支付API基础地址
+        MchID       string  // 商户ID
+        Secret      string  // 通讯密钥
+        PricePerUse float64 // 每次使用价格
+        NotifyURL   string  // 异步回调地址
+        ReturnURL   string  // 同步回调地址
     }
 }
 ```
@@ -73,18 +88,37 @@ type KeyRecord struct {
 }
 ```
 
+#### 订单记录 (Order)
+```go
+type Order struct {
+    PayID       string     // 商户订单号
+    UserID      string     // 用户ID
+    Count       int        // 购买次数
+    GoodsName   string     // 商品名称
+    Price       float64    // 订单金额
+    Status      string     // 订单状态
+    CreateTime  time.Time  // 创建时间
+    PayTime     *time.Time // 支付时间
+    PayType     int        // 支付方式
+    ReallyPrice float64    // 实际支付金额
+    OrderID     string     // 易支付订单号
+    ChatID      int64      // 聊天ID
+    MessageID   int        // 消息ID
+}
+```
+
 ### 核心模块
 
-#### 1. 加密模块
+#### 1. 数据库模块
+- **MySQL连接**: 使用MySQL存储用户、卡密和订单数据
+- **事务处理**: 卡密使用等关键操作使用事务确保数据一致性
+- **连接池管理**: 设置连接池参数优化性能
+
+#### 2. 加密模块
 - **AES密钥生成**: `generateAESKey()` - 生成256位随机密钥
 - **确定性密钥**: `generateDeterministicKey()` - 基于用户ID和时间戳生成
 - **Token加密**: `encryptPayload()` - AES-GCM加密用户数据
 - **Token解密**: `decryptToken()` - 解密并验证Token
-
-#### 2. 数据库模块
-- **用户数据库**: JSON格式存储用户记录
-- **卡密数据库**: JSON格式存储卡密记录
-- **数据持久化**: 自动保存和加载数据
 
 #### 3. 验证模块
 - **IP验证**: 检查公网IP有效性，拒绝内网地址
@@ -95,6 +129,12 @@ type KeyRecord struct {
 - **状态管理**: 用户操作状态跟踪
 - **消息超时**: 自动清理超时消息
 - **键盘管理**: 动态生成内联键盘
+
+#### 5. 支付模块
+- **易支付集成**: 支持微信和支付宝支付
+- **订单管理**: 创建、查询和更新订单
+- **支付回调**: 处理支付成功通知
+- **签名验证**: 验证支付回调的签名
 
 ## 🎮 用户操作流程
 
@@ -122,6 +162,26 @@ type KeyRecord struct {
 系统验证卡密有效性 → 
 增加使用次数 → 
 更新账户信息
+```
+
+#### 4. 充值次数
+```
+用户点击"💰 充值次数" → 
+输入要充值的次数 → 
+确认订单信息 → 
+跳转至支付页面 → 
+完成支付 → 
+自动增加使用次数
+```
+
+#### 5. 换绑IP
+```
+用户点击"🔥 换绑IP" → 
+输入新的公网IP → 
+系统验证IP有效性 → 
+创建换绑订单 → 
+完成支付 → 
+自动更新IP并生成新Token
 ```
 
 ### 管理员功能
@@ -164,6 +224,12 @@ type KeyRecord struct {
 - `403`: 使用次数不足
 - `500`: 系统错误
 
+### GET/POST /notify
+易支付异步回调接口
+
+### GET /return
+易支付同步回调接口
+
 ## 🛠️ 技术实现
 
 ### 加密算法
@@ -183,9 +249,11 @@ type KeyRecord struct {
 - **输出**: 32位十六进制字符串
 
 ### 数据存储
-- **格式**: JSON
-- **编码**: UTF-8
-- **备份**: 自动保存机制
+- **数据库**: MySQL
+- **表结构**:
+  - `users`: 用户信息表
+  - `card_keys`: 卡密信息表
+  - `orders`: 订单信息表
 
 ## 🔒 安全机制
 
@@ -197,7 +265,7 @@ type KeyRecord struct {
 ### 2. 使用次数控制
 - 每次验证自动扣减次数
 - 次数不足时拒绝验证
-- 支持通过卡密增加次数
+- 支持通过卡密或在线支付增加次数
 
 ### 3. 消息安全
 - 自动删除用户输入消息
@@ -209,15 +277,82 @@ type KeyRecord struct {
 - 只有配置的管理员可生成卡密
 - 操作日志记录
 
+### 5. 支付安全
+- 签名验证支付回调
+- 订单状态实时查询
+- 事务处理确保数据一致性
+
 ## 📁 文件结构
 
 ```
-go/
+token-auth-system/
 ├── main.go          # 主程序文件
 ├── config.toml      # 配置文件
-├── users.json       # 用户数据库
-├── keys.json        # 卡密数据库
-└── README.md        # 项目文档
+├── README.md        # 项目文档
+└── sql/
+    ├── schema.sql   # 数据库表结构
+    └── init.sql     # 初始化数据
+```
+
+## 🗄️ 数据库表结构
+
+### users 表
+```sql
+CREATE TABLE `users` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` varchar(64) NOT NULL,
+  `ip` varchar(64) NOT NULL,
+  `token` text NOT NULL,
+  `limit_count` int NOT NULL DEFAULT '0',
+  `timestamp` bigint NOT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `user_id` (`user_id`),
+  UNIQUE KEY `ip` (`ip`)
+);
+```
+
+### card_keys 表
+```sql
+CREATE TABLE `card_keys` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `key_code` varchar(32) NOT NULL,
+  `add_limit` int NOT NULL,
+  `used` tinyint(1) NOT NULL DEFAULT '0',
+  `used_by` varchar(64) DEFAULT NULL,
+  `created_by` varchar(64) NOT NULL,
+  `created_at` datetime NOT NULL,
+  `used_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `key_code` (`key_code`)
+);
+```
+
+### orders 表
+```sql
+CREATE TABLE `orders` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `pay_id` varchar(64) NOT NULL,
+  `order_id` varchar(64) DEFAULT NULL,
+  `user_id` varchar(64) NOT NULL,
+  `count` int NOT NULL DEFAULT '0',
+  `goods_name` varchar(255) NOT NULL,
+  `price` decimal(10,2) NOT NULL,
+  `really_price` decimal(10,2) DEFAULT NULL,
+  `status` varchar(32) NOT NULL,
+  `pay_type` int DEFAULT NULL,
+  `pay_time` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime DEFAULT NULL,
+  `chat_id` bigint DEFAULT NULL,
+  `message_id` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `pay_id` (`pay_id`),
+  KEY `user_id` (`user_id`),
+  KEY `status` (`status`),
+  KEY `order_id` (`order_id`)
+);
 ```
 
 ## ⚙️ 配置说明
@@ -233,37 +368,55 @@ token = "YOUR_BOT_TOKEN_HERE"
 admin_ids = [123456789, 987654321]
 
 [database]
-file = "users.json"
-keys_file = "keys.json"
+host = "localhost"
+port = 3306
+user = "token_auth"
+password = "your_password"
+db_name = "token_auth"
 
 [limits]
 default_limit = 10
 key_add_limit = 5
+
+[payment]
+base_url = "https://epay.example.com"
+mch_id = "your_merchant_id"
+secret = "your_payment_secret"
+price_per_use = 0.1
+notify_url = "https://your-domain.com/notify"
+return_url = "https://your-domain.com/return"
 ```
 
 ## 🚀 部署运行
 
 ### 1. 环境要求
 - Go 1.16+
+- MySQL 5.7+
 - Telegram Bot Token
 - 公网服务器
+- 易支付商户账号
 
-### 2. 安装依赖
+### 2. 数据库准备
+```bash
+mysql -u root -p < sql/schema.sql
+```
+
+### 3. 安装依赖
 ```bash
 go mod tidy
 ```
 
-### 3. 配置文件
-编辑 `config.toml` 设置Bot Token和管理员ID
+### 4. 配置文件
+编辑 `config.toml` 设置Bot Token、数据库连接和支付参数
 
-### 4. 运行程序
+### 5. 运行程序
 ```bash
 go run main.go
 ```
 
-### 5. 验证部署
+### 6. 验证部署
 - 访问 `http://your-server:8080/health` 检查服务状态
-- 在Telegram中向Bot发送 `/start` 测试功能
+- 在Telegram中向Bot发送 `/help` 测试功能
 
 ## 📊 监控和日志
 
@@ -279,9 +432,17 @@ go run main.go
 - Token验证成功率
 - 用户注册数量
 - 卡密使用情况
+- 订单支付转化率
 - 系统错误率
 
 ## 🔄 更新日志
+
+### v2.0.0
+- ✅ 数据库从JSON文件迁移到MySQL
+- ✅ 集成易支付系统支持在线充值
+- ✅ 添加IP换绑功能
+- ✅ 优化消息管理和超时机制
+- ✅ 增强安全性和错误处理
 
 ### v1.0.0
 - ✅ 基础Token生成和验证功能
