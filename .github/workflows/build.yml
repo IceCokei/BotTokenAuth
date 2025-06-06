@@ -1,0 +1,74 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.20'
+          cache: true
+
+      - name: Get dependencies
+        run: go mod download
+
+      - name: Build for Linux
+        run: GOOS=linux GOARCH=amd64 go build -v -o bin/TokenAuth-linux main.go
+
+      - name: Build for Windows
+        run: GOOS=windows GOARCH=amd64 go build -v -o bin/TokenAuth-windows.exe main.go
+
+      - name: Build for macOS
+        run: GOOS=darwin GOARCH=amd64 go build -v -o bin/TokenAuth-mac main.go
+
+      - name: Extract version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Extract release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        id: extract_release_notes
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION_NUM=${VERSION#v}
+          RELEASE_NOTES=$(grep -A 10 "### v${VERSION_NUM}" README.md || echo "- 版本更新")
+          echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
+          echo "$RELEASE_NOTES" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Create Release for Tags
+        if: startsWith(github.ref, 'refs/tags/')
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            bin/TokenAuth-linux
+            bin/TokenAuth-windows.exe
+            bin/TokenAuth-mac
+          draft: false
+          prerelease: false
+          name: "TokenAuth ${{ env.VERSION }}"
+          body: ${{ env.RELEASE_NOTES }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: TokenAuth-binaries
+          path: bin/
+          retention-days: 5 
