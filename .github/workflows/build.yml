@@ -3,8 +3,6 @@ name: Build and Release
 on:
   push:
     branches: [ main ]
-    tags:
-      - 'v*'
   pull_request:
     branches: [ main ]
 
@@ -33,57 +31,6 @@ jobs:
 
       - name: Build for macOS
         run: GOOS=darwin GOARCH=amd64 go build -v -o bin/TokenAuth-mac main.go
-
-      - name: Extract version from tag
-        if: startsWith(github.ref, 'refs/tags/')
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-
-      - name: Extract release notes
-        if: startsWith(github.ref, 'refs/tags/')
-        id: extract_release_notes
-        run: |
-          # 找到Changelog部分的起始行
-          CHANGELOG_START=$(grep -n "## 🔄 Changelog" README.md | cut -d':' -f1)
-          if [ -z "$CHANGELOG_START" ]; then
-            echo "Changelog section not found, using default message"
-            echo "RELEASE_NOTES=- New release" >> $GITHUB_ENV
-          else
-            # 找到第一个版本标题行(###开头)的行号
-            FIRST_VERSION_LINE=$((CHANGELOG_START + 2))
-            # 找到第二个版本标题行的行号(如果存在)
-            SECOND_VERSION_LINE=$(tail -n +$FIRST_VERSION_LINE README.md | grep -n "^###" | head -2 | tail -1 | cut -d':' -f1)
-            
-            if [ -z "$SECOND_VERSION_LINE" ]; then
-              # 如果只有一个版本标题，提取从第一个版本标题到文件结尾
-              RELEASE_NOTES=$(tail -n +$FIRST_VERSION_LINE README.md)
-            else
-              # 计算结束行号
-              END_LINE=$((FIRST_VERSION_LINE + SECOND_VERSION_LINE - 2))
-              # 提取从第一个版本标题到第二个版本标题之前的内容
-              RELEASE_NOTES=$(sed -n "${FIRST_VERSION_LINE},${END_LINE}p" README.md)
-            fi
-            
-            echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
-            echo "$RELEASE_NOTES" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-          fi
-
-      - name: Create Release for Tags
-        if: startsWith(github.ref, 'refs/tags/')
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            bin/TokenAuth-linux
-            bin/TokenAuth-windows.exe
-            bin/TokenAuth-mac
-          draft: false
-          prerelease: false
-          name: "TokenAuth ${{ env.VERSION }}"
-          body: ${{ env.RELEASE_NOTES }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
