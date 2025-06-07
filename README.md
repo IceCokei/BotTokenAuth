@@ -441,7 +441,7 @@ go run main.go
 
 ## 🔄 Changelog
 
-### v2.0.0
+### v1.1.0
 - ✅ Migrated database from JSON files to MySQL
 - ✅ Integrated EPay system for online recharging
 - ✅ Added IP rebinding feature
