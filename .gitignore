@@ -24,9 +24,6 @@ dist/
 # Go workspace file
 go.work
 
-# Go dependency lock file
-go.sum
-
 # IDE specific files
 .idea/
 .vscode/
