@@ -92,6 +92,14 @@ jobs:
         run: |
           cd release
           cat > release_notes.md << 'EOF'
+          ## Changes:
+          
+          - ✅ Migrated database from JSON files to MySQL
+          - ✅ Integrated EPay system for online recharging
+          - ✅ Added IP rebinding feature
+          - ✅ Optimized message management and timeout mechanism
+          - ✅ Enhanced security and error handling
+          
           ## 🚀 Release ${{ github.ref_name }}
           
           ### 📦 Downloads
@@ -115,7 +123,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: release/*
+          files: release/*.tar.gz
           body_path: release/release_notes.md
           draft: false
           prerelease: false
