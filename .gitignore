@@ -5,6 +5,12 @@
 *.so
 *.dylib
 bin/
+dist/
+
+# Release packages
+*.tar.gz
+*.zip
+*.sha256
 
 # Test binary, built with `go test -c`
 *.test

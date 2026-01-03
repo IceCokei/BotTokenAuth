@@ -3,38 +3,143 @@ name: Build and Release
 on:
   push:
     branches: [ main ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main ]
 
 jobs:
   build:
-    name: Build and Release
+    name: Build Multi-Platform Binaries
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            output: BotTokenAuth-linux-amd64
+          - goos: linux
+            goarch: arm64
+            output: BotTokenAuth-linux-arm64
+          - goos: windows
+            goarch: amd64
+            output: BotTokenAuth-windows-amd64.exe
+          - goos: darwin
+            goarch: amd64
+            output: BotTokenAuth-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            output: BotTokenAuth-darwin-arm64
+    
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.20'
+          go-version: '1.21'
           cache: true
 
       - name: Get dependencies
         run: go mod download
 
-      - name: Build for Linux
-        run: GOOS=linux GOARCH=amd64 go build -v -o bin/TokenAuth-linux main.go
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -v -trimpath -ldflags="-s -w" -o ${{ matrix.output }} main.go
 
-      - name: Build for Windows
-        run: GOOS=windows GOARCH=amd64 go build -v -o bin/TokenAuth-windows.exe main.go
+      - name: Compress binary (Linux/macOS)
+        if: matrix.goos != 'windows'
+        run: |
+          tar -czf ${{ matrix.output }}.tar.gz ${{ matrix.output }} config.toml.example
+          sha256sum ${{ matrix.output }}.tar.gz > ${{ matrix.output }}.tar.gz.sha256
 
-      - name: Build for macOS
-        run: GOOS=darwin GOARCH=amd64 go build -v -o bin/TokenAuth-mac main.go
+      - name: Compress binary (Windows)
+        if: matrix.goos == 'windows'
+        run: |
+          zip ${{ matrix.output }}.zip ${{ matrix.output }} config.toml.example
+          sha256sum ${{ matrix.output }}.zip > ${{ matrix.output }}.zip.sha256
 
-      - name: Upload Artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: TokenAuth-binaries
-          path: bin/
-          retention-days: 5 
+          name: ${{ matrix.output }}
+          path: |
+            *.tar.gz
+            *.zip
+            *.sha256
+          retention-days: 7
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec cp {} release/ \;
+          ls -lh release/
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          cat > release_notes.md << 'EOF'
+          ## 🚀 Release ${{ github.ref_name }}
+          
+          ### 📦 Downloads
+          
+          Choose the appropriate binary for your platform:
+          
+          - **Linux AMD64**: `BotTokenAuth-linux-amd64.tar.gz`
+          - **Linux ARM64**: `BotTokenAuth-linux-arm64.tar.gz`
+          - **Windows AMD64**: `BotTokenAuth-windows-amd64.exe.zip`
+          - **macOS Intel**: `BotTokenAuth-darwin-amd64.tar.gz`
+          - **macOS Apple Silicon**: `BotTokenAuth-darwin-arm64.tar.gz`
+          
+          ### 🔐 Verify Downloads
+          
+          Each archive includes a `.sha256` file for verification:
+          ```bash
+          sha256sum -c BotTokenAuth-*.sha256
+          ```
+          
+          ### 📝 Installation
+          
+          1. Download and extract the archive for your platform
+          2. Copy `config.toml.example` to `config.toml`
+          3. Edit `config.toml` with your configuration
+          4. Run the binary: `./BotTokenAuth-*`
+          
+          ### 📋 What's Changed
+          
+          See commit history for detailed changes.
+          EOF
+          cat release_notes.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
