@@ -42,7 +42,9 @@ jobs:
           cache: true
 
       - name: Get dependencies
-        run: go mod download
+        run: |
+          go mod download
+          go mod verify
 
       - name: Build binary
         env:
