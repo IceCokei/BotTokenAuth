@@ -1,0 +1,31 @@
+# 服务器配置
+[server]
+port = 8089
+host = "0.0.0.0"
+
+# Bot配置
+[bot]
+token = "YOUR_BOT_TOKEN_HERE"
+admin_ids = [123456789]
+
+# 数据库配置
+[database]
+host = "localhost"
+port = 3306
+user = "your_db_user"
+password = "your_db_password"
+db_name = "your_db_name"
+
+# 限制配置
+[limits]
+default_limit = 1
+key_add_limit = 10
+
+# 支付配置
+[payment]
+base_url = "https://your-payment-gateway.com"
+mch_id = "your_merchant_id"
+secret = "your_payment_secret"
+price_per_use = 0.1            # 每次使用的价格（元）
+notify_url = "http://your-domain.com:8089/notify"  # 异步回调地址
+return_url = "http://your-domain.com:8089/return"  # 同步回调地址
