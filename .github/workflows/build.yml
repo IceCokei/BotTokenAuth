@@ -21,9 +21,6 @@ jobs:
           - goos: linux
             goarch: arm64
             output: BotTokenAuth-linux-arm64
-          - goos: windows
-            goarch: amd64
-            output: BotTokenAuth-windows-amd64.exe
           - goos: darwin
             goarch: amd64
             output: BotTokenAuth-darwin-amd64
@@ -43,6 +40,7 @@ jobs:
 
       - name: Get dependencies
         run: |
+          go mod tidy
           go mod download
           go mod verify
 
@@ -54,17 +52,10 @@ jobs:
         run: |
           go build -v -trimpath -ldflags="-s -w" -o ${{ matrix.output }} main.go
 
-      - name: Compress binary (Linux/macOS)
-        if: matrix.goos != 'windows'
+      - name: Compress binary
         run: |
           tar -czf ${{ matrix.output }}.tar.gz ${{ matrix.output }} config.toml.example
           sha256sum ${{ matrix.output }}.tar.gz > ${{ matrix.output }}.tar.gz.sha256
-
-      - name: Compress binary (Windows)
-        if: matrix.goos == 'windows'
-        run: |
-          zip ${{ matrix.output }}.zip ${{ matrix.output }} config.toml.example
-          sha256sum ${{ matrix.output }}.zip > ${{ matrix.output }}.zip.sha256
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -96,7 +87,7 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
-          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec cp {} release/ \;
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.sha256" \) -exec cp {} release/ \;
           ls -lh release/
 
       - name: Generate release notes
@@ -111,7 +102,6 @@ jobs:
           
           - **Linux AMD64**: `BotTokenAuth-linux-amd64.tar.gz`
           - **Linux ARM64**: `BotTokenAuth-linux-arm64.tar.gz`
-          - **Windows AMD64**: `BotTokenAuth-windows-amd64.exe.zip`
           - **macOS Intel**: `BotTokenAuth-darwin-amd64.tar.gz`
           - **macOS Apple Silicon**: `BotTokenAuth-darwin-arm64.tar.gz`
           
