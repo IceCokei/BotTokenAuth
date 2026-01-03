@@ -407,11 +407,22 @@ mysql -u root -p < sql/schema.sql
 
 ### 3. Install Dependencies
 ```bash
-go mod tidy
+go mod download
 ```
 
 ### 4. Configuration
-Edit `config.toml` to set Bot Token, database connection and payment parameters
+Copy the example configuration file and edit it:
+```bash
+cp config.toml.example config.toml
+```
+
+Edit `config.toml` to set:
+- Bot Token (get from [@BotFather](https://t.me/botfather))
+- Database connection information
+- Payment parameters (EPay merchant account)
+- Admin user IDs
+
+**Important**: Never commit `config.toml` to version control as it contains sensitive information!
 
 ### 5. Run Program
 ```bash
